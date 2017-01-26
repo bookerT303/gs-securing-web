@@ -1,0 +1,7 @@
+*.swp
+.idea/
+.mvn/
+build/
+gradlew.bat
+mvnw
+mvnw.cmd
