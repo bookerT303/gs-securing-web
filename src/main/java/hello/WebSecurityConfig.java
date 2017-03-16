@@ -1,8 +1,10 @@
 package hello;
 
 import hello.security.AuthenticateUserService;
+import hello.security.CustomAuthenticationProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.config.annotation.authentication.builders.AuthenticationManagerBuilder;
 import org.springframework.security.config.annotation.method.configuration.EnableGlobalMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -14,10 +16,10 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 @EnableGlobalMethodSecurity(securedEnabled = true)
 public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
 
-    private AuthenticateUserService userService;
+    private AuthenticationProvider userService;
 
     public WebSecurityConfig() {
-        this.userService = new AuthenticateUserService();
+        this.userService = new CustomAuthenticationProvider(); // new AuthenticateUserService();
     }
 
     @Override
@@ -37,6 +39,7 @@ public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
 
     @Autowired
     public void configureGlobal(AuthenticationManagerBuilder auth) throws Exception {
-        auth.userDetailsService(userService);
+//        auth.userDetailsService(userService);
+        auth.authenticationProvider(userService);
     }
 }
