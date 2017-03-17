@@ -31,7 +31,7 @@ public class AuthenticateUserService implements UserDetailsService {
         // TODO : we should just get the UserData information from the database
         UserData userData = users.stream()
                 .filter(entry -> entry.getUsername().equals(username))
-                .findFirst().orElseThrow(() -> new InvalidParameterException("Unknown User " + username));
+                .findFirst().orElseThrow(() -> new UsernameNotFoundException("Unknown User " + username));
 
         return new User(userData.getUsername(), userData.getPassword(),
                 userData.getRoles().stream()
