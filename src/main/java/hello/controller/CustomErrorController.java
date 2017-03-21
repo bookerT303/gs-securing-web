@@ -27,7 +27,8 @@ public class CustomErrorController implements ErrorController {
 
     @RequestMapping(value = PATH)
     public String error(HttpServletRequest request, HttpServletResponse response, Model model) {
-        model.addAttribute("status", response.getStatus());
+        int status = response.getStatus();
+        model.addAttribute("status", status);
         Map<String, Object> errorData = getErrorAttributes(request, debug);
         model.addAttribute("error", (String) errorData.get("error"));
         model.addAttribute("message", (String) errorData.get("message"));
@@ -35,6 +36,9 @@ public class CustomErrorController implements ErrorController {
         model.addAttribute("trace", (String) errorData.get("trace"));
         // Appropriate HTTP response code (e.g. 404 or 500) is automatically set by Spring.
         // Here we just define response body.
+        if (status == 401) {
+            return "unauthorized";
+        }
         return "errorsHappen";
     }
 
