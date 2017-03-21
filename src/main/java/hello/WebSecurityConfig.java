@@ -5,6 +5,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.config.annotation.authentication.builders.AuthenticationManagerBuilder;
 import org.springframework.security.config.annotation.method.configuration.EnableGlobalMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -40,21 +41,27 @@ public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
 
     @Override
     protected void configure(HttpSecurity http) throws Exception {
+        CustomBasicAuthenticationEntryPoint authenticationEntryPoint = new CustomBasicAuthenticationEntryPoint();
         BasicAuthenticationFilter basicAuthenticationFilter = new BasicAuthenticationFilter(
-                authManagerBuilder.getOrBuild(), new CustomBasicAuthenticationEntryPoint());
+                authManagerBuilder.getOrBuild(), authenticationEntryPoint);
         http
                 .authorizeRequests()
                 .antMatchers("/", "/home", "/unauthorized", "/error").permitAll()
                 .anyRequest().authenticated()
-//                .and().addFilterAt(basicAuthenticationFilter, BasicAuthenticationFilter.class)
-                .and().httpBasic()
-//                    .authenticationEntryPoint((request, response, authException) -> response.getWriter().write("basic Custom Authentication Required"))
-//                .and()
-//                .exceptionHandling()
-//                .authenticationEntryPoint((request, response, authException) -> response.getWriter().write("Custom Authentication Required"))
-//                .accessDeniedHandler((request, response, accessDeniedException) -> {
-//                            response.getWriter().write("Custom Denied");
-//                        })
+                .and()
+//                .addFilterAt(basicAuthenticationFilter, BasicAuthenticationFilter.class)
+                .httpBasic()
+                    .authenticationEntryPoint((request, response, authException) ->
+                            handleAuthenticationException(authenticationEntryPoint, response, authException)
+                    )
+                .and()
+                .exceptionHandling()
+                .authenticationEntryPoint((request, response, authException) ->
+                    handleAuthenticationException(authenticationEntryPoint, response, authException)
+                )
+                .accessDeniedHandler((request, response, accessDeniedException) -> {
+                            response.getWriter().write("Custom Denied");
+                        })
 //                .and()
 //            .formLogin()
 //                .loginPage("/login")
@@ -67,6 +74,15 @@ public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
 //                .logoutSuccessUrl("/home")
 //                .permitAll()
         ;
+    }
+
+    private void handleAuthenticationException(CustomBasicAuthenticationEntryPoint authenticationEntryPoint, HttpServletResponse response, AuthenticationException authException) throws IOException {
+        if (authException instanceof BadCredentialsException) {
+            response.sendError(401, "Call Bob");
+        } else {
+            response.addHeader("WWW-Authenticate", "Basic realm=\"" + authenticationEntryPoint.getRealmName() + "\"");
+            response.sendError(401, "Please Login");
+        }
     }
 
     @Autowired
@@ -103,8 +119,8 @@ public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
 class CustomBasicAuthenticationEntryPoint extends BasicAuthenticationEntryPoint {
     @Override
     public void commence(HttpServletRequest request, HttpServletResponse response, AuthenticationException authException) throws IOException, ServletException {
-        response.addHeader("WWW-Authenticate", "Basic realm=\"" + getRealmName() + "\"");
-        response.setStatus(401);
+//        response.addHeader("WWW-Authenticate", "Basic realm=\"" + getRealmName() + "\"");
+//        response.setStatus(401);
         response.sendRedirect("forward:/unauthorized");
 //        response.sendError(HttpServletResponse.SC_UNAUTHORIZED,
 //                authException.getMessage());
