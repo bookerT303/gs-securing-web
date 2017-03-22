@@ -5,8 +5,12 @@ import hello.security.Role;
 import hello.security.UserData;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.security.access.AccessDecisionManager;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.access.ConfigAttribute;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.InsufficientAuthenticationException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.config.annotation.authentication.builders.AuthenticationManagerBuilder;
 import org.springframework.security.config.annotation.method.configuration.EnableGlobalMethodSecurity;
@@ -16,16 +20,20 @@ import org.springframework.security.config.annotation.web.configuration.WebSecur
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.context.SecurityContext;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.web.FilterInvocation;
 import org.springframework.security.web.authentication.www.BasicAuthenticationEntryPoint;
 import org.springframework.security.web.authentication.www.BasicAuthenticationFilter;
+import sun.plugin.liveconnect.SecurityContextHelper;
 
 import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
-import java.util.Arrays;
-import java.util.List;
+import java.util.*;
 import java.util.stream.Collectors;
 
 import static java.util.Arrays.asList;
+import static java.util.Collections.emptyList;
 
 @Configuration
 @EnableWebSecurity
@@ -36,10 +44,12 @@ public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
 
     private AuthenticationProvider authProvider;
 
+    private AccessDecisionManager accessDecisionManager;
 
     public WebSecurityConfig() {
         this.authProvider = new CustomAuthenticationProvider();
         this.userService = new AuthenticateUserService();
+        this.accessDecisionManager = new CustomerAccessDecisionManager();
     }
 
     @Autowired
@@ -52,13 +62,14 @@ public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
                 authManagerBuilder.getOrBuild(), authenticationEntryPoint);
         http
                 .authorizeRequests()
-                .antMatchers("/", "/home", "/unauthorized", "/error").permitAll()
+                .antMatchers("/", "/home", "/unauthorized", "/error", "/favicon.ico").permitAll()
+                .accessDecisionManager(accessDecisionManager)
                 .anyRequest().authenticated()
                 .and()
 //                .addFilterAt(basicAuthenticationFilter, BasicAuthenticationFilter.class)
                 .httpBasic()
                 .authenticationEntryPoint((request, response, authException) ->
-                        response.sendError(401, "Call Bob")
+                        response.sendError(401, "Call Bob to become a user")
                 )
                 .and()
                 .exceptionHandling()
@@ -68,7 +79,7 @@ public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
                         }
                 )
                 .accessDeniedHandler((request, response, accessDeniedException) -> {
-                    response.getWriter().write("Custom Denied");
+                    response.sendError(403, "Call Bob to get access");
                 })
 //                .and()
 //            .formLogin()
@@ -83,16 +94,6 @@ public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
 //                .permitAll()
         ;
     }
-
-//    private void handleAuthenticationException(BasicAuthenticationEntryPoint authenticationEntryPoint, HttpServletResponse response, AuthenticationException authException) throws IOException {
-//        if (authException instanceof BadCredentialsException) {
-//            response.sendError(401, "Call Bob");
-//        } else {
-//            response.addHeader("WWW-Authenticate", "Basic realm=\"" + authenticationEntryPoint.getRealmName() + "\"");
-//            response.sendError(401, "Please Login");
-//        }
-//    }
-//
     @Autowired
     public void configureGlobal(AuthenticationManagerBuilder auth) throws Exception {
         auth.authenticationProvider(authProvider);
@@ -100,48 +101,13 @@ public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
     }
 }
 
-//class StatelessLoginFilter extends AbstractAuthenticationProcessingFilter {
-//
-//    @Override
-//    public Authentication attemptAuthentication(HttpServletRequest request, HttpServletResponse response) throws AuthenticationException, IOException, ServletException {
-//        return null;
-//    }
-//
-//    protected void unsuccessfulAuthentication(HttpServletRequest request, HttpServletResponse response,
-//                                              AuthenticationException failed) throws IOException, ServletException {
-//        SecurityContextHolder.clearContext();
-//
-//        if (logger.isDebugEnabled()) {
-//            logger.debug("Authentication request failed: " + failed.toString());
-//            logger.debug("Updated SecurityContextHolder to contain null Authentication");
-//            logger.debug("Delegating to authentication failure handler " + failureHandler);
-//        }
-//
-//        //        response.setCharacterEncoding("UTF-8");
-//        //        response.getWriter().write(jsonService.toString(jsonService.getResponse(false, "Не удалось авторизоваться", "401")));
-//
-//        rememberMeServices.loginFail(request, response);
-//        failureHandler.onAuthenticationFailure(request, response, failed);
-//
-//    }
-//}
-//class CustomBasicAuthenticationEntryPoint extends BasicAuthenticationEntryPoint {
-//    @Override
-//    public void commence(HttpServletRequest request, HttpServletResponse response, AuthenticationException authException) throws IOException, ServletException {
-////        response.addHeader("WWW-Authenticate", "Basic realm=\"" + getRealmName() + "\"");
-////        response.setStatus(401);
-//        response.sendRedirect("forward:/unauthorized");
-////        response.sendError(HttpServletResponse.SC_UNAUTHORIZED,
-////                authException.getMessage());
-////
-//    }
-//}
 class CustomAuthenticationProvider
         implements AuthenticationProvider {
     private final List<UserData> users;
 
     public CustomAuthenticationProvider() {
         users = asList(
+                new UserData("noAccess", "password", true, emptyList()),
                 new UserData("user", "password", true, asList(new Role("ROLE_USER"))),
                 new UserData("admin", "admin", true, asList(
                         new Role("ROLE_USER"),
@@ -191,4 +157,42 @@ class CustomAuthenticationProvider
         }
     }
 
+}
+
+class CustomerAccessDecisionManager implements AccessDecisionManager {
+
+    @Override
+    public void decide(Authentication authentication, Object object, Collection<ConfigAttribute> configAttributes) throws AccessDeniedException, InsufficientAuthenticationException {
+        if (object instanceof FilterInvocation) {
+            FilterInvocation invocation = (FilterInvocation) object;
+            boolean bail = false;
+            if (bail) {
+                throw new AccessDeniedException("Not allowed");
+            }
+            Optional<ConfigAttribute> authenticated = configAttributes.stream()
+                    .filter(attribute -> "authenticated".equals(attribute.toString()))
+                    .findAny();
+            if (authenticated.isPresent()) {
+                // TODO we need to check the authentication
+                boolean isLoggedIn = authentication.isAuthenticated();
+                Optional<? extends GrantedAuthority> hasRole = authentication.getAuthorities().stream()
+                        .filter(role -> role.getAuthority().equalsIgnoreCase("role_user"))
+                        .findAny();
+                if (hasRole.isPresent() == false) {
+                    throw new AccessDeniedException("Not allowed");
+                }
+            }
+        }
+        return;
+    }
+
+    @Override
+    public boolean supports(ConfigAttribute attribute) {
+        return true;
+    }
+
+    @Override
+    public boolean supports(Class<?> clazz) {
+        return true;
+    }
 }
